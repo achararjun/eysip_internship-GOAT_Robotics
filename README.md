@@ -1,4 +1,4 @@
-# eysip_internship-GOAT_Robotics 2024
+# eYSIP_internship-GOAT_Robotics 2024
 
 ## Project Title: Grid Solving Autonomous Sorting Robot
 
@@ -18,3 +18,4 @@ The objective of the overall problem statement is to create a multi agent sortin
 - Platform IO
 - MODBUS
 - RS485
+
