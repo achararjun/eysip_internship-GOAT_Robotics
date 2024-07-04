@@ -1,10 +1,12 @@
+// Include necessary headers for Arduino and serial communication
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <string.h>
 
-const int mdDeRe = 15;  // Define GPIO for DE/RE pin
-const int rxPin = 16;   // Define GPIO for RX pin
-const int txPin = 17;   // Define GPIO for TX pin    
+// Define GPIO pins for RS485 communication
+const int mdDeRe = 15;  // DE/RE pin for controlling transmit/receive mode
+const int rxPin = 16;   // RX pin for receiving data
+const int txPin = 17;   // TX pin for transmitting data    
 
 HardwareSerial mySerial(2); // Use UART2
 
@@ -14,6 +16,7 @@ void appendCRC(uint8_t* message, size_t length);
 void initializeMotor();
 void sendMessage(uint8_t* message, size_t length);
 
+// Setup function to initialize serial communication and motor
 void setup() {
   pinMode(mdDeRe, OUTPUT);    
   digitalWrite(mdDeRe, LOW); // Set to receive mode initially
@@ -25,6 +28,7 @@ void setup() {
   initializeMotor();
 }
 
+// Main loop function (empty for now)
 void loop() {
   // Main loop can be used for other tasks
 }
@@ -55,10 +59,11 @@ void appendCRC(uint8_t* message, size_t length) {
 
 // Function to initialize and start motor
 void initializeMotor() {
-  uint8_t velocityModePR0[] = {0x01, 0x06, 0x62, 0x00, 0x00, 0x02};    // set Velocity Mode for PR0
+  // Define Modbus messages to set motor parameters and trigger motion
+  uint8_t velocityModePR0[] = {0x01, 0x06, 0x62, 0x00, 0x00, 0x02};    // Set Velocity Mode for PR0
   uint8_t setVelocity0[] = {0x01, 0x06, 0x62, 0x03, 0x00, 0x3C};      // Set velocity to 60 RPM for PR0
   uint8_t triggerPR0[] = {0x01, 0x06, 0x60, 0x02, 0x00, 0x10};       // Trigger PR0 motion
-  uint8_t velocityModePR1[] = {0x01, 0x06, 0x62, 0x08, 0x00, 0x02}; //set velocity mode for PR1
+  uint8_t velocityModePR1[] = {0x01, 0x06, 0x62, 0x08, 0x00, 0x02}; // Set Velocity Mode for PR1
   uint8_t setVelocity1[] = {0x01, 0x06, 0x62, 0x0B, 0x00, 0xC8};   // Set velocity to 200 RPM for PR1
   uint8_t triggerPR1[] = {0x01, 0x06, 0x60, 0x02, 0x00, 0x11};     // Trigger PR1 motion
 
@@ -114,7 +119,7 @@ void initializeMotor() {
     triggerPR1Length + 2
   };
 
-  // Send each message
+  // Send each message for PR0
   for (int i = 0; i < 3; i++) {
     // Set RS485 to transmit mode
     Serial.println("Setting RS485 to transmit mode...");
@@ -148,7 +153,8 @@ void initializeMotor() {
     delay(5000); // Delay before sending the next message
   }
 
-  for (int i = 3; i < 7; i++) {
+  // Send each message for PR1
+  for (int i = 3; i < 6; i++) {
     // Set RS485 to transmit mode
     Serial.println("Setting RS485 to transmit mode...");
     digitalWrite(mdDeRe, HIGH); 
