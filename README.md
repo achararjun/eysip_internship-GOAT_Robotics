@@ -10,3 +10,11 @@ The objective of the overall problem statement is to create a multi agent sortin
 - Leadshine CS2RS-D507 Stepper Motor Driver
 - Leadshine CS-M22331-L Closed Loop Stepper Motor
 - ZLAC8015 AC Servo Motor Driver
+
+### Tech Stack used:
+- ROS2
+- Micro ROS
+- Arduino IDE
+- Platform IO
+- MODBUS
+- RS485
