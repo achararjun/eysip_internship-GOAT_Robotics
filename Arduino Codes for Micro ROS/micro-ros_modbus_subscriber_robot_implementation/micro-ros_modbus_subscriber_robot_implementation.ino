@@ -1,4 +1,3 @@
-// Include necessary headers for micro-ROS and Arduino libraries
 #include <micro_ros_arduino.h>
 #include <Arduino.h>
 #include <HardwareSerial.h>
@@ -17,95 +16,28 @@ const int txPin = 17;   // TX pin for transmitting data
 HardwareSerial mySerial(2); // Use UART2 for serial communication
 
 // Declare necessary micro-ROS structures and variables
-rcl_subscription_t subscriber;           // Subscriber handle for ROS topic
-geometry_msgs__msg__Twist cmd_vel_msg;   // Message structure for receiving Twist messages
-rclc_executor_t executor;                // Executor for managing ROS callbacks
-rcl_allocator_t allocator;               // Allocator for managing memory
-rclc_support_t support;                  // Support structure for initializing micro-ROS
-rcl_node_t node;                         // Node handle for ROS node
+rcl_subscription_t subscriber;
+geometry_msgs__msg__Twist cmd_vel_msg;
+rclc_executor_t executor;
+rcl_allocator_t allocator;
+rclc_support_t support;
+rcl_node_t node;
 
-// Macros for checking the return value of functions and handling errors
+// Variables for command persistence
+float last_linear_x = 0.0;
+float last_angular_z = 0.0;
+unsigned long last_command_time = 0;
+const unsigned long command_timeout = 5000; // 500ms timeout
+
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 
-// Function to handle errors by entering an infinite loop
 void error_loop(){
   while(1){
     delay(100);
   }
 }
 
-// Function to send a Modbus command over RS485
-void sendModbusCommand(const uint8_t* command, size_t length) {
-    // Ensure the RS485 is in transmit mode
-    digitalWrite(mdDeRe, HIGH); 
-    delay(10);
-
-    // Send the Modbus command
-    mySerial.write(command, length);
-    mySerial.flush();
-    delay(100);
-
-    // Set RS485 to receive mode
-    digitalWrite(mdDeRe, LOW); 
-    delay(10);
-
-    // Check for response
-    if (mySerial.available()) {
-        Serial.print("Response: ");
-        while (mySerial.available() > 0) {
-            byte incomingByte = mySerial.read();
-            Serial.print(incomingByte, HEX);
-            Serial.print(" ");
-        }
-        Serial.println();
-    } else {
-        Serial.println("No response received.");
-    }
-}
-
-// Function to initialize the motor with specific Modbus commands
-void setupMotor() {
-    uint8_t commands[][8] = {
-        {0x01, 0x06, 0x20, 0x32, 0x00, 0x03, 0x63, 0xC4},  // Set Profile Velocity Mode
-        {0x01, 0x06, 0x20, 0x37, 0x01, 0xF4, 0x33, 0xD3},  // Set S-type acceleration time 500ms
-        {0x01, 0x06, 0x20, 0x38, 0x01, 0xF4, 0x03, 0xD0},  // Set S-type deceleration time 500ms
-        {0x01, 0x06, 0x20, 0x31, 0x00, 0x08, 0xD2, 0x03},  // Motor enable
-        {0x01, 0x06, 0x20, 0x3A, 0x00, 0x00, 0xA3, 0xEC}   // Initialize target speed to 0
-    };
-
-    // Send each command with a short delay between commands
-    for (int i = 0; i < 5; i++) {
-        sendModbusCommand(commands[i], sizeof(commands[i]));
-        delay(500); // Short delay between commands
-    }
-}
-
-// Callback function for receiving Twist messages and executing motor commands
-void subscription_callback(const void* msgin) {
-    const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msgin;
-    uint8_t command[8] = {0x01, 0x06, 0x20, 0x3A}; // Base command for setting speed
-    int16_t target_speed_left = msg->linear.x * 10 - msg->angular.z * 10;  // Left motor speed
-    int16_t target_speed_right = msg->linear.x * 10 + msg->angular.z * 10; // Right motor speed
-
-    // Send command to left motor
-    command[4] = (target_speed_left >> 8) & 0xFF;  // High byte of speed
-    command[5] = target_speed_left & 0xFF;         // Low byte of speed
-    uint16_t crc = modbus_crc(command, 6);
-    command[6] = crc & 0xFF;      // CRC low byte
-    command[7] = (crc >> 8) & 0xFF;  // CRC high byte
-    sendModbusCommand(command, 8);
-
-    // Send command to right motor
-    command[4] = (target_speed_right >> 8) & 0xFF;  // High byte of speed
-    command[5] = target_speed_right & 0xFF;         // Low byte of speed
-    crc = modbus_crc(command, 6);
-    command[6] = crc & 0xFF;      // CRC low byte
-    command[7] = (crc >> 8) & 0xFF;  // CRC high byte
-    sendModbusCommand(command, 8);
-}
-
-// Function to calculate CRC for Modbus command
 uint16_t modbus_crc(uint8_t *buf, int len) {
     uint16_t crc = 0xFFFF;
     for (int pos = 0; pos < len; pos++) {
@@ -122,34 +54,115 @@ uint16_t modbus_crc(uint8_t *buf, int len) {
     return crc;
 }
 
-// Setup function to initialize micro-ROS, RS485 communication, and subscription
+void sendModbusCommand(const uint8_t* command, size_t length) {
+    digitalWrite(mdDeRe, HIGH);
+    delay(10);
+    mySerial.write(command, length);
+    mySerial.flush();
+    delay(100);
+    digitalWrite(mdDeRe, LOW);
+    delay(10);
+
+    if (mySerial.available()) {
+        Serial.print("Response: ");
+        while (mySerial.available() > 0) {
+            byte incomingByte = mySerial.read();
+            Serial.print(incomingByte, HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+    } else {
+        Serial.println("No response received.");
+    }
+}
+
+void setupMotor() {
+    uint8_t commands[][6] = {
+        {0x01, 0x06, 0x20, 0x32, 0x00, 0x03},
+        {0x01, 0x06, 0x20, 0x37, 0x01, 0xF4},
+        {0x01, 0x06, 0x20, 0x38, 0x01, 0xF4},
+        {0x01, 0x06, 0x20, 0x31, 0x00, 0x08},
+        {0x02, 0x06, 0x20, 0x32, 0x00, 0x03},
+        {0x02, 0x06, 0x20, 0x37, 0x01, 0xF4},
+        {0x02, 0x06, 0x20, 0x38, 0x01, 0xF4},
+        {0x02, 0x06, 0x20, 0x31, 0x00, 0x08}
+    };
+
+    for (int i = 0; i < 8; i++) {
+        uint16_t crc = modbus_crc(commands[i], 6);
+        uint8_t command_with_crc[8];
+        memcpy(command_with_crc, commands[i], 6);
+        command_with_crc[6] = crc & 0xFF;
+        command_with_crc[7] = (crc >> 8) & 0xFF;
+        sendModbusCommand(command_with_crc, sizeof(command_with_crc));
+        delay(500);
+    }
+}
+
+void subscription_callback(const void* msgin) {
+    const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msgin;
+    last_linear_x = msg->linear.x;
+    last_angular_z = msg->angular.z;
+    last_command_time = millis();
+}
+
+void apply_motor_commands(float linear_x, float angular_z) {
+    uint8_t command_left[8] = {0x01, 0x06, 0x20, 0x3A};
+    uint8_t command_right[8] = {0x02, 0x06, 0x20, 0x3A};
+
+    int16_t target_speed_left = linear_x * 10 - angular_z * 10;
+    int16_t target_speed_right = linear_x * 10 + angular_z * 10;
+
+    // Send command to left motor
+    command_left[4] = (target_speed_left >> 8) & 0xFF;
+    command_left[5] = target_speed_left & 0xFF;
+    uint16_t crc_left = modbus_crc(command_left, 6);
+    command_left[6] = crc_left & 0xFF;
+    command_left[7] = (crc_left >> 8) & 0xFF;
+    sendModbusCommand(command_left, 8);
+
+    // Send command to right motor
+    command_right[4] = (target_speed_right >> 8) & 0xFF;
+    command_right[5] = target_speed_right & 0xFF;
+    uint16_t crc_right = modbus_crc(command_right, 6);
+    command_right[6] = crc_right & 0xFF;
+    command_right[7] = (crc_right >> 8) & 0xFF;
+    sendModbusCommand(command_right, 8);
+}
+
 void setup() {
-    // Initialize Wi-Fi transport for micro-ROS communication
-    set_microros_wifi_transports("Arjun", "1234arjun", "172.20.10.3", 8888);
-    delay(1000); // Delay to ensure Wi-Fi connection is established
-    pinMode(mdDeRe, OUTPUT);       // Set DE/RE pin as output
-    digitalWrite(mdDeRe, LOW);     // Set DE/RE pin to receive mode
+    set_microros_wifi_transports("iQOO Z7 5G", "surya1234", "192.168.28.132", 8888);
+    delay(1000);
+    pinMode(mdDeRe, OUTPUT);
+    digitalWrite(mdDeRe, LOW);
 
-    mySerial.begin(9600, SERIAL_8N1, rxPin, txPin); // Initialize serial communication
-    Serial.begin(9600);            // Initialize debug serial communication
+    mySerial.begin(115200, SERIAL_8N1, rxPin, txPin);
+    Serial.begin(115200);
 
-    allocator = rcl_get_default_allocator(); // Get the default allocator
-    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator)); // Initialize support structure
-    RCCHECK(rclc_node_init_default(&node, "modbus_node", "", &support)); // Initialize ROS node
+    allocator = rcl_get_default_allocator();
+    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+    RCCHECK(rclc_node_init_default(&node, "modbus_node", "", &support));
     RCCHECK(rclc_subscription_init_default(
         &subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-        "cmd_vel"));               // Initialize subscription for "cmd_vel" topic
+        "cmd_vel"));
 
-    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator)); // Initialize executor
-    RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &cmd_vel_msg, &subscription_callback, ON_NEW_DATA)); // Add subscription to executor
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+    RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &cmd_vel_msg, &subscription_callback, ON_NEW_DATA));
 
-    setupMotor(); // Initialize the motor with specific commands
+    setupMotor();
 }
 
-// Main loop function to handle incoming messages
 void loop() {
-    RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100))); // Spin executor to handle messages
-    delay(100); // Delay to avoid spamming the executor
+    RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
+
+    unsigned long current_time = millis();
+    if (current_time - last_command_time < command_timeout) {
+        apply_motor_commands(last_linear_x, last_angular_z);
+    } else {
+        apply_motor_commands(0, 0);
+    }
+
+    delay(10);
 }
