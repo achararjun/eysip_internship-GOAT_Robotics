@@ -35,6 +35,7 @@ Download nmap package if not installed and replace ip_address with your host ip 
 ```
 ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888 --dev <ip_address>
 ```
+Follow the official micro ROS documentation to download and setup the micro ROS agent.
 Here the ip_address is not the address of the host machine, but that of the ESP32 which is obtained after step 2.
 
 #### Press the reset (en) button on the esp32 or power off and on the board to make sure the subscriber node is created
