@@ -51,6 +51,6 @@ ros2 run telop_twist_keyboard teleop_twist_keyboard
 
 ### Resources
 
-[First micro-ROS Application on Linux]([https://micro.ros.org/](https://micro.ros.org/docs/tutorials/core/first_application_linux/))\
+[First micro-ROS Application on Linux](https://micro.ros.org/docs/tutorials/core/first_application_linux/)\
 [Modbus official documentation](https://modbus.org/)
 
