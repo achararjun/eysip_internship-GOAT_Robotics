@@ -50,6 +50,6 @@ ros2 run telop_twist_keyboard teleop_twist_keyboard
 
 ### Resources
 
-[Micro ROS official documentation](https://micro.ros.org/)
+[Micro ROS official documentation](https://micro.ros.org/)\
 [Modbus official documentation](https://modbus.org/)
 
