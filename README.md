@@ -47,3 +47,9 @@ Here the ip_address is not the address of the host machine, but that of the ESP3
 ros2 run telop_twist_keyboard teleop_twist_keyboard
 ```
 
+
+### Resources
+
+[Micro ROS official documentation](https://micro.ros.org/)
+[Modbus official documentation](https://modbus.org/)
+
